@@ -1,12 +1,12 @@
 import cv2 as cv
 import numpy as np
 import openvino as ov
-import math
 import time
+from pathlib import Path
 
 
 class PaddleOCR:
-    def __init__(self, model_path: str, dict_path: str) -> None:
+    def __init__(self, model_path: Path, dict_path: Path) -> None:
         self.ov_core = ov.Core()
         ov_model = self.ov_core.read_model(model_path)
         self.compiled_model = ov.compile_model(ov_model, device_name="CPU")
@@ -18,7 +18,13 @@ class PaddleOCR:
 
         self.post_process = CTCLabelDecode(character_dict_path=dict_path, use_space_char=True)
 
-    def inference_once(self, input_img: cv.Mat):
+    def inference_once(self, input_img: cv.Mat) -> list | tuple[list, list]:
+        input_data = [self.pre_process(input_img)]
+        output_data = self.compiled_model(input_data)[self.rec_output_layer]
+        result = self.post_process(output_data)
+        return result
+
+    def inference_once_perfcount(self, input_img: cv.Mat) -> list | tuple[list, list]:
         start = time.perf_counter()
         input_data = [self.pre_process(input_img)]
         t1 = time.perf_counter()
