@@ -3,6 +3,12 @@ import numpy as np
 import openvino as ov
 import time
 from pathlib import Path
+import math
+
+t1_sum = 0
+t2_sum = 0
+t3_sum = 0
+num = 0
 
 
 class PaddleOCR:
@@ -25,24 +31,38 @@ class PaddleOCR:
         return result
 
     def inference_once_perfcount(self, input_img: cv.Mat) -> list | tuple[list, list]:
+        global t1_sum, t2_sum, t3_sum, num
         start = time.perf_counter()
         input_data = [self.pre_process(input_img)]
         t1 = time.perf_counter()
+        t1_sum += t1 - start
         output_data = self.compiled_model(input_data)[self.rec_output_layer]
         t2 = time.perf_counter()
+        t2_sum += t2 - t1
         result = self.post_process(output_data)
-        print(t1 - start, t2 - t1, time.perf_counter() - t2)
+        t3_sum += time.perf_counter() - t2
+        num += 1
+        # print(t1_sum / num, t2_sum / num, t3_sum / num)
         return result
 
+    # [h,w,c] ->[1,c,new_h,new_w]
     def pre_process(self, input_frame: cv.Mat) -> cv.Mat:
-        # [h,w,c] ->[1,c,new_h,new_w]
         # 填充图像
-        resize_frame = cv.resize(input_frame, (320, 48))
-        # 归一化 & 标准化mean
-        resize_frame = cv.dnn.blobFromImage(resize_frame, scalefactor=1 / 255, mean=0.5, swapRB=False)
-        # 标准化std
+        h, w, _ = input_frame.shape
+        new_w = min(320, round(w * (48 / h)))
+
+        resize_frame = cv.resize(input_frame, (new_w, 48))
+        resize_frame = resize_frame.astype(np.float32)
+        resize_frame /= 255.0
+        resize_frame -= 0.5
         resize_frame /= 0.5
-        return resize_frame
+
+        padding_frame = np.zeros((48, 320, 3), np.float32)
+        padding_frame[:, :new_w] = resize_frame
+        # 归一化 & 标准化mean
+        padding_frame = cv.dnn.blobFromImage(padding_frame, swapRB=False)
+
+        return padding_frame
 
 
 class BaseRecLabelDecode(object):
